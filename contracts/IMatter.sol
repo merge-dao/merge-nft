@@ -2,23 +2,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-interface IERC165 {
-    /**
-     * @dev Returns true if this contract implements the interface defined by
-     * `interfaceId`. See the corresponding
-     * https://eips.ethereum.org/EIPS/eip-165#how-interfaces-are-identified[EIP section]
-     * to learn more about how these ids are created.
-     *
-     * This function call must use less than 30 000 gas.
-     */
-    function supportsInterface(bytes4 interfaceId) external view returns (bool);
-}
-
-
 /**
  * @dev Required interface of an ERC721 compliant contract.
  */
-interface IERC721 is IERC165 {
+interface IMatter {
     /**
      * @dev Emitted when `tokenId` token is transferred from `from` to `to`.
      */
@@ -33,6 +20,16 @@ interface IERC721 is IERC165 {
      * @dev Emitted when `owner` enables or disables (`approved`) `operator` to manage all of its assets.
      */
     event ApprovalForAll(address indexed owner, address indexed operator, bool approved);
+
+    /**
+     * @dev Returns true if this contract implements the interface defined by
+     * `interfaceId`. See the corresponding
+     * https://eips.ethereum.org/EIPS/eip-165#how-interfaces-are-identified[EIP section]
+     * to learn more about how these ids are created.
+     *
+     * This function call must use less than 30 000 gas.
+     */
+    function supportsInterface(bytes4 interfaceId) external view returns (bool);
 
     /**
      * @dev Returns the number of tokens in ``owner``'s account.
@@ -124,6 +121,8 @@ interface IERC721 is IERC165 {
      */
     function setApprovalForAll(address operator, bool _approved) external;
 
+    function mint(address recipient, uint256 yinId, uint256 yinTid, uint256 yangId, uint256 yangTid) external returns (uint256);
+
     /**
      * @dev Returns if the `operator` is allowed to manage all of the assets of `owner`.
      *
@@ -150,4 +149,27 @@ interface IERC721 is IERC165 {
         uint256 tokenId,
         bytes calldata data
     ) external;
+
+    /**
+     * @dev burn matter.
+     *
+     * Requirements:
+     *
+     * - `from` cannot be the zero address.
+     * - `to` cannot be the zero address.
+     * - `tokenId` token must exist and be owned by `from`.
+     * - If the caller is not `from`, it must be approved to move this token by either {approve} or {setApprovalForAll}.
+     * - If `to` refers to a smart contract, it must implement {IERC721Receiver-onERC721Received}, which is called upon a safe transfer.
+     *
+     * Emits a {Transfer} event.
+     */
+    function burn(
+        uint256 tokenId
+    ) external;
+
+    function getYangId(uint256 tokenId) external view returns (uint256);
+    function getYangTid(uint256 tokenId) external view returns (uint256);
+    function getYinId(uint256 tokenId) external view returns (uint256);
+    function getYinTid(uint256 tokenId) external view returns (uint256);
+
 }

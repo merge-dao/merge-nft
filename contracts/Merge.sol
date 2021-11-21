@@ -1,314 +1,432 @@
 // SPDX-License-Identifier: MIT
-
 pragma solidity ^0.8.0;
 
-
+import "./IMatter.sol";
 import "./@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "./@openzeppelin/contracts/utils/Counters.sol";
 import "./@openzeppelin/contracts/access/Ownable.sol";
 import "./@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
-import "./@openzeppelin/contracts/token/ERC721/extensions/ERC721Burnable.sol";
-import "./@openzeppelin/contracts/token/ERC721/extensions/ERC721Pausable.sol";
 
-import "./@openzeppelin/contracts/token/ERC721/IERC721.sol";
+// import "./@openzeppelin/contracts/token/ERC721/IERC721.sol";
 
-
-contract Merge is ERC721Pausable, ERC721URIStorage, ERC721Burnable, Ownable {
+contract Merge is ERC721URIStorage, Ownable {
     using Counters for Counters.Counter;
     Counters.Counter private _matterIds;
 
     struct MatterMeta {
         uint256 id;
-        uint tokenId;
+        uint256 tokenId;
     }
+
+    mapping(address => uint256) private _metaMatterIds;
 
     mapping(address => MatterMeta[]) private _tokenOwners;
 
     bool private _isStopTransfer = true;
 
-    // 当前这个人有几个matter，每个metter都有一个matterId和一个tokenId
-    // 当前改地址对应的是一个数组
+    address private _matterNFTContract;
 
-    string[] private vibes = [
-        "Optimist",
-        "Cosmic",
-        "Chill",
-        "Hyper",
-        "Kind",
-        "Hater",
-        "Phobia",
-        "Generous",
-        "JonGold"
-    ];
+    constructor() ERC721("MatterMerge", "MTMG") {}
 
-    constructor() public ERC721("MatterMerge", "MATM") {
-      // 构造函数中禁止token转移，转移token会出现异常
-        //   _pause();
+    function burn(uint256 tokenId) internal {
+        _burn(tokenId);
     }
 
-    function _beforeMatterTransfer(
-        address from,
-        address to,
-        uint256 tokenId
-    ) internal {
+    function _beforeMatterTransfer() internal view {
         require(!_isStopTransfer, "matter token transfer while paused");
     }
 
-    // erc721合约地址
-    function addMatter(address recipient)
-        public onlyOwner
-        returns (uint256) 
-      {
+    function setMatterContract(address matterNFT)
+        public
+        onlyOwner
+        returns (address)
+    {
+        _matterNFTContract = matterNFT;
+        return matterNFT;
+    }
+
+    function matterContract() public view returns (address) {
+        return _matterNFTContract;
+    }
+
+    // erc721合约地址，需要防止重放攻击
+    function addMetaMatter(address metaMatter)
+        public
+        onlyOwner
+        returns (uint256)
+    {
+        // 需要确保唯一性, 保证每一个原Matter只能被添加一次
+        require(_metaMatterIds[metaMatter] == 0, "metaMatter already exists");
         _matterIds.increment();
         uint256 matterId = _matterIds.current();
-        _mint(recipient, matterId);
+        _mint(metaMatter, matterId);
+
+        // 将原matter合约和id关联起来
+        _metaMatterIds[metaMatter] = matterId;
         return matterId;
+    }
+
+    // 销毁已经添加的matter
+    function burnMetaMatter(uint256 tokenId)
+        public
+        onlyOwner
+        returns (uint256)
+    {
+        address metaMatterContract = ownerOf(tokenId);
+        // 判断元物质是否被添加
+        require(tokenId != 0, "meta matter not exist");
+
+        delete _metaMatterIds[metaMatterContract];
+
+        burn(tokenId);
+
+        return tokenId;
+    }
+
+    // 获取当前原Matter的id
+    function getMetaMatterId(address metaMatter) public view returns (uint256) {
+        return _metaMatterIds[metaMatter];
     }
 
     // 保存指定matter的信息
     function _saveMatter(uint256 matterId, uint256 tokenId) private {
         address sender = _msgSender();
         // 如果当前地址没有初始化则进行初始化
-        if (_tokenOwners[sender] == 0) {
-            _tokenOwners[sender] = [];
-        }
+        // if (_tokenOwners[sender].length == 0) {
+        //     _tokenOwners[sender] = address[0];
+        // }
         // 把当前存入到合约中的nft放入对应的账户中
         _tokenOwners[sender].push(MatterMeta(matterId, tokenId));
     }
 
     // 保存指定matter的信息
-    function _saveMatter(address owner, uint256 matterId, uint256 tokenId) private {
+    function _saveMatter(
+        address owner,
+        uint256 matterId,
+        uint256 tokenId
+    ) private {
         // 如果当前地址没有初始化则进行初始化
-        if (_tokenOwners[owner] == 0) {
-            _tokenOwners[owner] = [];
-        }
+        // if (_tokenOwners[owner] == 0) {
+        //     _tokenOwners[owner] = address[];
+        // }
         // 把当前存入到合约中的nft放入对应的账户中
         _tokenOwners[owner].push(MatterMeta(matterId, tokenId));
     }
 
     // 移除指定的matter
-    function _saveMatter(address owner, uint256 matterId, uint256 tokenId) private {
+    function _deleteMatter(
+        address owner,
+        uint256 matterId,
+        uint256 tokenId
+    ) private {
         // 如果当前地址没有初始化则进行初始化
-        if (_tokenOwners[owner] == 0) {
-            _tokenOwners[owner] = [];
+        // if (_tokenOwners[owner] == 0) {
+        //     _tokenOwners[owner] = address[];
+        // }
+        bool isExist = false;
+        uint256 resultIdx = 0;
+        for (uint256 i = 0; i < _tokenOwners[owner].length; i++) {
+            if (
+                _tokenOwners[owner][i].id == matterId &&
+                _tokenOwners[owner][i].tokenId == tokenId
+            ) {
+                resultIdx = i;
+                isExist = true;
+                break;
+            }
         }
+        require(isExist, "matter not exist");
         // 把当前存入到合约中的nft放入对应的账户中
-        _tokenOwners[owner].push(MatterMeta(matterId, tokenId));
-    }
-
-    // 存入指定的nft到合约中
-    function deposit(uint256 matterId, uint256 tokenId)
-        public onlyOwner
-        returns (uint256) 
-      {
-        // 获取erc721指定的合约地址 
-        address tokenContract = ownerOf(matterId);
-        address sender = _msgSender();
-        IERC721 token = IERC721(tokenContract);
-        // 将tokenId存入合约中
-        token.safeTransferFrom(sender, this, tokenId);
-        // 保存指定的nft的信息
-        _saveMatter(sender, matterId, tokenId);
-        return tokenId;
+        // delete  _tokenOwners[owner][resultIdx];
+        // require(resultIdx < _tokenOwners[owner].length);
+        _tokenOwners[owner][resultIdx] = _tokenOwners[owner][
+            _tokenOwners[owner].length - 1
+        ];
+        _tokenOwners[owner].pop();
     }
 
     // 获取指定用户可用的matter
-    function approveMatter(address owner) public view returns (MatterMeta[]) {
-        requrie(owner != address(0), 'owner is not valid');
-        return _tokenOwners[owner];
+    function matterOf(address owner) public view returns (MatterMeta[] memory) {
+        require(owner != address(0), "owner is not valid");
+        MatterMeta[] memory owners = _tokenOwners[owner];
+        return owners;
     }
 
-    // 把指定的nft转移到自己的账户
-    function withdraw()
-        public onlyOwner
-        returns (uint256) 
+    // 任何人都可以存入自己的nft到合约中
+    function deposit(uint256 metaMatterId, uint256 tokenId)
+        public
+        returns (uint256)
     {
+        // 获取erc721指定的合约地址
+        address tokenContract = ownerOf(metaMatterId);
+        address sender = _msgSender();
 
+        IERC721 token = IERC721(tokenContract);
+
+        // 将tokenId存入合约中
+        token.safeTransferFrom(sender, address(this), tokenId);
+
+        // 保存指定的nft的信息, 这里不保存Matter信息，因为不知到Matter是否转移成功
+        // _saveMatter(sender, metaMatterId, tokenId);
+        return tokenId;
     }
 
-    function compose(uint256 yinId, uint256 yinTid, uint256 yangId, uint256 yangTid) public returns (MatterMeta) {
+    // 把指定的nft转移给指定的用户
+    function withdraw(
+        address to,
+        uint256 metaMatterId,
+        uint256 tokenId
+    ) public returns (uint256) {
+        // 获取erc721指定的合约地址
+        address tokenContract = ownerOf(metaMatterId);
+
+        require(tokenContract != address(0), "metaMatter not exist");
+
+        address sender = _msgSender();
+
+        // 判断当前用户是否有权限转移
+        MatterMeta[] memory ownMatters = matterOf(sender);
+
+        bool isVerifyed = false;
+        uint256 resultIdx = 0;
+
+        for (uint256 i = 0; i < ownMatters.length; i++) {
+            if (
+                ownMatters[i].id == metaMatterId &&
+                ownMatters[i].tokenId == tokenId
+            ) {
+                isVerifyed = true;
+                resultIdx = i;
+            }
+        }
+
+        require(isVerifyed, "you have no permission to withdraw");
+
+        IERC721 token = IERC721(tokenContract);
+        // 将tokenId存入合约中
+        token.safeTransferFrom(address(this), to, tokenId);
+
+        // 移除指定的nft
+        _deleteMatter(sender, metaMatterId, tokenId);
+
+        return tokenId;
+    }
+
+    // 提到自己的账户中
+    function withdraw(uint256 metaMatterId, uint256 tokenId)
+        public
+        returns (uint256)
+    {
+        address sender = _msgSender();
+        return withdraw(sender, metaMatterId, tokenId);
+    }
+
+    function onERC721Received(
+        address,
+        address from,
+        uint256 tokenId,
+        bytes calldata
+    ) external returns (bytes4) {
+        address tokenContract = _msgSender();
+        uint256 metaMatterId = _metaMatterIds[tokenContract];
+        // 保存指定的nft的信息，保证NFT转移成功后再存入当前的token
+        _saveMatter(from, metaMatterId, tokenId);
+        return 0x150b7a02;
+    }
+
+    function compose(
+        uint256 yinId,
+        uint256 yinTid,
+        uint256 yangId,
+        uint256 yangTid
+    ) public returns (uint256) {
         // 判断当前发送者是否有足够的matter
         address sender = _msgSender();
-        require(_tokenOwners[sender] != 0, "no matter to compose");
-        
-        MatterMeta[] ownerMatters = _tokenOwners[sender];
-        MatterMeta[2] inputs = [MatterMeta(yinId, yinTid), MatterMeta(yangId, yangTid)];]; 
+        require(_tokenOwners[sender].length > 0, "no matter to compose");
+
+        MatterMeta[] memory ownerMatters = _tokenOwners[sender];
+        MatterMeta[2] memory inputs = [
+            MatterMeta(yinId, yinTid),
+            MatterMeta(yangId, yangTid)
+        ];
 
         uint256 counter = 0;
         // 检查是否有不合法的matter
         for (uint256 i = 0; i < inputs.length; i++) {
             for (uint256 j = 0; j < ownerMatters.length; j++) {
-                if (inputs[i].id == ownerMatters[j].id && inputs[i].tokenId == ownerMatters[j].tokenId) {
+                if (
+                    inputs[i].id == ownerMatters[j].id &&
+                    inputs[i].tokenId == ownerMatters[j].tokenId
+                ) {
                     counter += 1;
                 }
             }
         }
 
         // 确保所有的matter都是合法的
-        requrie(counter != 2, "invalid matter");
+        require(counter == 2, "invalid matter");
 
         // 创建合成的matter，并存入到合约中
-        IERC721 matter = IERC721(""); // matter合约
+        IMatter matter = IMatter(_matterNFTContract); // matter合约
 
         // 自增id, 开始铸造
-        uint256 matterId = matter.mint(this, yin, yang);
+        uint256 matterId = matter.mint(
+            address(this),
+            yinId,
+            yinTid,
+            yangId,
+            yangTid
+        );
 
-        uint256 ownerCount = _tokenOwners[sender].length;
-        
+        uint256 removeCount = 0;
+
         // 移除被合成的matter
         for (uint256 i = 0; i < inputs.length; i++) {
             for (uint256 j = 0; j < ownerMatters.length; j++) {
-                if (inputs[i].id == ownerMatters[j].id && inputs[i].tokenId == ownerMatters[j].tokenId) {
-                    ownerMatters.remove(j);
+                if (
+                    inputs[i].id == ownerMatters[j].id &&
+                    inputs[i].tokenId == ownerMatters[j].tokenId
+                ) {
+                    // 删除被合成的matter
+                    _deleteMatter(sender, inputs[i].id, inputs[i].tokenId);
+                    removeCount += 1;
+                    // delete ownerMatters[j];
                     break;
                 }
             }
         }
 
-        require(ownerMatters.length != ownerCount - 2, "make sure remove yin yang");
+        require(removeCount == 2, "make sure remove yin yang");
+
+        uint256 matterContractId = getMetaMatterId(_matterNFTContract);
+        // 保存新的matter给铸造者
+        _saveMatter(sender, matterContractId, matterId);
 
         // 完成所有操作后返回合成的matter的id
         return matterId;
     }
 
-    // 用指定的matter进行合并
-    function compose(MatterMeta[] matters)
-      public onlyOwner
-      returns (uint256) 
-    {
+    // // 用指定的matter进行合并
+    // function compose(uint256[] memory matters)
+    //     public
+    //     onlyOwner
+    //     returns (uint256)
+    // {
+    //     //     // 判断当前发送者是否有足够的matter
+    //     //     address sender = _msgSender();
+    //     //     require(_tokenOwners[sender].length > 0, "no matter to compose");
+    //     //     MatterMeta[] memory ownerMatters = _tokenOwners[sender];
+    //     //     uint256 counter = 0;
+    //     //     // 检查是否有不合法的matter
+    //     //     for (uint256 i = 0; i < matters.length; i++) {
+    //     //         for (uint256 j = 0; j < ownerMatters.length; j++) {
+    //     //             if (matters[i].id == ownerMatters[j].id && matters[i].tokenId == ownerMatters[j].tokenId) {
+    //     //                 counter += 1;
+    //     //             }
+    //     //         }
+    //     //     }
+    //     //     // 确保所有的matter都是合法的
+    //     //     require(counter == matters.length, "invalid matter");
+    //     //     // 创建合成的matter，并存入到合约中
+    //     //     IERC721 matter = IERC721(address(0x0fC5025C764cE34df352757e82f7B5c4Df39A836)); // matter合约
+    //     //     // 自增id, 开始铸造
+    //     //     // uint256 matterId = matter.mint(address(this), yinId, yinTid, yangId, yangTid);
+    //     //     // 移除被合成的matter
+    //     //     for (uint256 i = 0; i < matters.length; i++) {
+    //     //         for (uint256 j = 0; j < ownerMatters.length; j++) {
+    //     //             if (matters[i].id == ownerMatters[j].id && matters[i].tokenId == ownerMatters[j].tokenId) {
+    //     //                 ownerMatters.remove(j);
+    //     //                 break;
+    //     //             }
+    //     //         }
+    //     //     }
+    //     //     // 完成所有操作后返回合成的matter的id
+    //     //     return matterId;
+    // }
+
+    // 分解指定的物质
+    function deCompose(uint256 tokenId) public returns (uint256) {
         // 判断当前发送者是否有足够的matter
         address sender = _msgSender();
-        require(_tokenOwners[sender] != 0, "no matter to compose");
-        
-        MatterMeta[] ownerMatters = _tokenOwners[sender];
+        require(_tokenOwners[sender].length > 0, "no matter to decompose");
+
+        uint256 matterId = getMetaMatterId(_matterNFTContract);
+
         uint256 counter = 0;
         // 检查是否有不合法的matter
-        for (uint256 i = 0; i < matters.length; i++) {
-            for (uint256 j = 0; j < ownerMatters.length; j++) {
-                if (matters[i].id == ownerMatters[j].id && matters[i].tokenId == ownerMatters[j].tokenId) {
-                    counter += 1;
-                }
-            }
-        }
-        // 确保所有的matter都是合法的
-        requrie(counter == matters.length, "invalid matter");
-        
-        // 创建合成的matter，并存入到合约中
-        IERC721 matter = IERC721(""); // matter合约
-
-        // 自增id, 开始铸造
-        uint256 matterId = matter.mint(this, matters);
-
-        // 移除被合成的matter
-        for (uint256 i = 0; i < matters.length; i++) {
-            for (uint256 j = 0; j < ownerMatters.length; j++) {
-                if (matters[i].id == ownerMatters[j].id && matters[i].tokenId == ownerMatters[j].tokenId) {
-                    ownerMatters.remove(j);
-                    break;
-                }
+        for (uint256 i = 0; i < _tokenOwners[sender].length; i++) {
+            // 第一个原Matter是matter合约
+            if (
+                _tokenOwners[sender][i].tokenId == tokenId &&
+                _tokenOwners[sender][i].id == matterId
+            ) {
+                counter += 1;
             }
         }
 
-        // 完成所有操作后返回合成的matter的id
+        require(counter == 1, "invalid matter");
+
+        // 从自身的存储中移除
+        _deleteMatter(sender, matterId, tokenId);
+
+        // 获取合约地址
+        IMatter matter = IMatter(_matterNFTContract); // matter合约
+
+        uint256 yangId = matter.getYangId(tokenId);
+        uint256 yangTid = matter.getYangTid(tokenId);
+        uint256 yinId = matter.getYinId(tokenId);
+        uint256 yinTid = matter.getYinTid(tokenId);
+
+        // 合成的matter不能为0
+        require(
+            yangId != 0 && yangTid != 0 && yinId != 0 && yinTid != 0,
+            "invalid matter"
+        );
+
+        // 销毁当前的matter
+        matter.burn(tokenId);
+
+        // 恢复对拆分后的matter的控制权
+        _saveMatter(sender, yangId, yangTid);
+        _saveMatter(sender, yinId, yinTid);
+
+        // 把阴阳转移给发送者的存储中
         return matterId;
     }
 
+    // // 分解指定的物质
+    // function deCompose(address to, uint256 matter) public returns (uint256) {
 
-    function deCompose(uint256[] matters)
-      public onlyOwner
-      returns (uint256) 
-    {
-        
-    }
+    // }
 
     // 重写合约方法，生成的token防止被转移走
-    function transferFrom(address from, address to, uint256 tokenId) public onlyOwner {
-        _beforeMatterTransfer(from, to, tokenId);
+    function transferFrom(
+        address from,
+        address to,
+        uint256 tokenId
+    ) public override onlyOwner {
+        _beforeMatterTransfer();
         return super.transferFrom(from, to, tokenId);
     }
 
     // 重写合约方法，生成的token防止被转移走
-    function safeTransferFrom(address from, address to, uint256 tokenId) public onlyOwner {
-        _beforeMatterTransfer(from, to, tokenId);
+    function safeTransferFrom(
+        address from,
+        address to,
+        uint256 tokenId
+    ) public override onlyOwner {
+        _beforeMatterTransfer();
         return super.safeTransferFrom(from, to, tokenId);
     }
 
-    function tokenURI(uint256 tokenId) override public view returns (string memory) {
-        string[19] memory parts;
-        parts[0] = '<svg xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMinYMin meet" viewBox="0 0 350 350"><style>.base { fill: black; font-family: serif; font-size: 14px; }</style><rect width="100%" height="100%" fill="white" /><text x="10" y="20" class="base">';
-
-        parts[1] = getOS(tokenId);
-
-        parts[2] = '</text><text x="10" y="40" class="base">';
-
-        parts[3] = getTextEditor(tokenId);
-
-        parts[4] = '</text><text x="10" y="60" class="base">';
-
-        parts[5] = getClothing(tokenId);
-
-        parts[6] = '</text><text x="10" y="80" class="base">';
-
-        parts[7] = getLanguage(tokenId);
-
-        parts[8] = '</text><text x="10" y="100" class="base">';
-
-        parts[9] = getIndustry(tokenId);
-
-        parts[10] = '</text><text x="10" y="120" class="base">';
-
-        parts[11] = getLocation(tokenId);
-
-        parts[14] = '</text><text x="10" y="140" class="base">';
-
-        parts[15] = getMind(tokenId);
-
-        parts[16] = '</text><text x="10" y="160" class="base">';
-
-        parts[17] = getVibe(tokenId);
-
-        parts[18] = '</text></svg>';
-
-        string memory output = string(abi.encodePacked(parts[0], parts[1], parts[2], parts[3], parts[4], parts[5], parts[6], parts[7], parts[8]));
-        output = string(abi.encodePacked(output, parts[9], parts[10], parts[11], parts[12], parts[13], parts[14], parts[15], parts[16], parts[17], parts[18]));
-        
-        string memory json = Base64.encode(bytes(string(abi.encodePacked('{"name": "Dev #', toString(tokenId), '", "description": "Developers around the world are tired of working and contributing their time and effort to enrich the top 1%. Join the movement that is community owned, building the future from the bottom up.", "image": "data:image/svg+xml;base64,', Base64.encode(bytes(output)), '"}'))));
-        output = string(abi.encodePacked('data:application/json;base64,', json));
-
-        return output;
+    // 重写合约方法，生成的token防止被转移走
+    function safeTransferFrom(
+        address from,
+        address to,
+        uint256 tokenId,
+        bytes calldata _data
+    ) public override onlyOwner {
+        _beforeMatterTransfer();
+        return super.safeTransferFrom(from, to, tokenId, _data);
     }
-
-    function claim(uint256 tokenId) public nonReentrant {
-        require(tokenId > 0 && tokenId < 7778, "Token ID invalid");
-        _safeMint(_msgSender(), tokenId);
-    }
-    
-    function ownerClaim(uint256 tokenId) public nonReentrant onlyOwner {
-        require(tokenId > 7777 && tokenId < 8001, "Token ID invalid");
-        _safeMint(owner(), tokenId);
-    }
-    
-    function toString(uint256 value) internal pure returns (string memory) {
-    // Inspired by OraclizeAPI's implementation - MIT license
-    // https://github.com/oraclize/ethereum-api/blob/b42146b063c7d6ee1358846c198246239e9360e8/oraclizeAPI_0.4.25.sol
-
-        if (value == 0) {
-            return "0";
-        }
-        uint256 temp = value;
-        uint256 digits;
-        while (temp != 0) {
-            digits++;
-            temp /= 10;
-        }
-        bytes memory buffer = new bytes(digits);
-        while (value != 0) {
-            digits -= 1;
-            buffer[digits] = bytes1(uint8(48 + uint256(value % 10)));
-            value /= 10;
-        }
-        return string(buffer);
-    }
-    
-    constructor() ERC721("Devs for Revolution", "DEVS") Ownable() {}
 }

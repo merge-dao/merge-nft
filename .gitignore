@@ -1,2 +1,7 @@
 node_modules
 .local.md
+.debugger
+.build
+contracts/artifacts
+ipfs
+test/artifacts/
