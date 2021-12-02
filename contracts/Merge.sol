@@ -7,7 +7,6 @@ import "./@openzeppelin/contracts/utils/Counters.sol";
 import "./@openzeppelin/contracts/access/Ownable.sol";
 import "./@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 
-// import "./@openzeppelin/contracts/token/ERC721/IERC721.sol";
 
 contract Merge is ERC721URIStorage, Ownable {
     using Counters for Counters.Counter;
@@ -306,6 +305,25 @@ contract Merge is ERC721URIStorage, Ownable {
         return matterId;
     }
 
+    function merge(address yin, uint256 yinTid, address yang, uint256 yangTid) public returns(uint256) {
+        require(yin != address(0) && yang != address(0), "yin and yang not emputy!");
+        
+        uint256 yinId = getMetaMatterId(yin);
+        // 把对应的nft质押到合约中
+        deposit(yinId, yinTid);
+
+        uint256 yangId = getMetaMatterId(yang);
+        // 把对应的nft质押到合约中
+        deposit(yangId, yangTid);
+
+        uint256 newTokenId = compose(yinId, yinTid, yangId, yangTid);
+
+        // 把新的token提取到自己的账户
+        uint256 matterContractId = getMetaMatterId(_matterNFTContract);
+        withdraw(matterContractId, newTokenId);
+        return newTokenId;
+    }
+
     // // 用指定的matter进行合并
     // function compose(uint256[] memory matters)
     //     public
@@ -345,7 +363,7 @@ contract Merge is ERC721URIStorage, Ownable {
     // }
 
     // 分解指定的物质
-    function deCompose(uint256 tokenId) public returns (uint256) {
+    function deCompose(uint256 tokenId) public returns (uint256, uint256, uint256, uint256) {
         // 判断当前发送者是否有足够的matter
         address sender = _msgSender();
         require(_tokenOwners[sender].length > 0, "no matter to decompose");
@@ -391,13 +409,16 @@ contract Merge is ERC721URIStorage, Ownable {
         _saveMatter(sender, yinId, yinTid);
 
         // 把阴阳转移给发送者的存储中
-        return matterId;
+        return (yinId, yinTid, yangId, yangTid);
     }
 
-    // // 分解指定的物质
-    // function deCompose(address to, uint256 matter) public returns (uint256) {
-
-    // }
+    // 分解指定的物质
+    function demerge(uint256 tokenId) public returns (uint256) {
+        (uint256 yinId, uint256 yinTid, uint256 yangId, uint256 yangTid) = deCompose(tokenId);
+        withdraw(yinId, yinTid);
+        withdraw(yangId, yangTid);
+        return tokenId;
+    }
 
     // 重写合约方法，生成的token防止被转移走
     function transferFrom(
