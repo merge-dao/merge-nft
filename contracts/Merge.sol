@@ -414,6 +414,9 @@ contract Merge is ERC721URIStorage, Ownable {
 
     // 分解指定的物质
     function demerge(uint256 tokenId) public returns (uint256) {
+        require(tokenId > 0, "tokenId not null");
+        uint256 matterContractId = getMetaMatterId(_matterNFTContract);
+        deposit(matterContractId, tokenId);
         (uint256 yinId, uint256 yinTid, uint256 yangId, uint256 yangTid) = deCompose(tokenId);
         withdraw(yinId, yinTid);
         withdraw(yangId, yangTid);
